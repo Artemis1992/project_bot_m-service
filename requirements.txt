@@ -1,0 +1,14 @@
+# Общие зависимости проекта (сводка по сервисам)
+
+aiogram==3.12.0
+Django==5.1.2
+djangorestframework==3.16.0
+dj-database-url==2.2.0
+psycopg[binary]==3.2.3
+python-dotenv==1.0.1
+gunicorn==21.2.0
+httpx==0.28.1
+pydantic==2.8.2
+fastapi==0.115.0
+uvicorn==0.32.0
+gspread==6.1.4

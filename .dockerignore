@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+*.env
+.git
+.gitignore
+docker-compose.yml
+**/migrations/__pycache__/
+**/.DS_Store

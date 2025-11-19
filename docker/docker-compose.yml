@@ -1,0 +1,122 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: pbs-postgres
+    environment:
+      POSTGRES_DB: bot_service
+      POSTGRES_USER: bot_user
+      POSTGRES_PASSWORD: bot_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bot_user -d bot_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  categories_service:
+    build:
+      context: ..
+      dockerfile: docker/categories-service.Dockerfile
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-super-secret}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://bot_user:bot_pass@db:5432/bot_service}
+      GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID:-}
+      GOOGLE_CATEGORIES_SHEET: ${GOOGLE_CATEGORIES_SHEET:-Categories}
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+  requests_service:
+    build:
+      context: ..
+      dockerfile: docker/requests-service.Dockerfile
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-super-secret}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://bot_user:bot_pass@db:5432/bot_service}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  approvals_service:
+    build:
+      context: ..
+      dockerfile: docker/approvals-service.Dockerfile
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-super-secret}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://bot_user:bot_pass@db:5432/bot_service}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8002:8002"
+    restart: unless-stopped
+
+  files_service:
+    build:
+      context: ..
+      dockerfile: docker/files-service.Dockerfile
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:-}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON:-}
+    ports:
+      - "8100:8100"
+    restart: unless-stopped
+
+  reporting_service:
+    build:
+      context: ..
+      dockerfile: docker/reporting-service.Dockerfile
+    environment:
+      GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID:-}
+      GOOGLE_REPORTING_SHEET: ${GOOGLE_REPORTING_SHEET:-Reports}
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON:-}
+    ports:
+      - "8200:8200"
+    restart: unless-stopped
+
+  bot_gateway:
+    build:
+      context: ..
+      dockerfile: docker/bot-gateway.Dockerfile
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:-}
+      CATEGORIES_SERVICE_URL: ${CATEGORIES_SERVICE_URL:-http://categories_service:8001/api}
+      REQUESTS_SERVICE_URL: ${REQUESTS_SERVICE_URL:-http://requests_service:8000/api}
+      FILES_SERVICE_URL: ${FILES_SERVICE_URL:-http://files_service:8100}
+      APPROVALS_SERVICE_URL: ${APPROVALS_SERVICE_URL:-http://approvals_service:8002/api}
+      REPORTING_SERVICE_URL: ${REPORTING_SERVICE_URL:-http://reporting_service:8200}
+    depends_on:
+      categories_service:
+        condition: service_started
+      requests_service:
+        condition: service_started
+      files_service:
+        condition: service_started
+      approvals_service:
+        condition: service_started
+      reporting_service:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
