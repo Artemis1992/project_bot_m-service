@@ -7,6 +7,9 @@ from typing import Any, Dict
 import httpx
 from pydantic import BaseModel
 
+from .http_utils import get_api_headers
+from .retry_client import retry_request
+
 
 class RequestPayload(BaseModel):
     tg_user_id: int
@@ -47,10 +50,15 @@ class RequestsServiceClient:
 
     async def create_request(self, payload: RequestPayload) -> Dict[str, Any]:
         url = f"{self.base_url}/requests/"
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(url, json=payload.model_dump())
-            response.raise_for_status()
-            return response.json()
+        headers = get_api_headers()
+
+        async def _make_request():
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=payload.model_dump(), headers=headers)
+                response.raise_for_status()
+                return response.json()
+
+        return await retry_request(_make_request)
 
     async def attach_file(
         self,
@@ -58,8 +66,40 @@ class RequestsServiceClient:
         payload: AttachmentPayload,
     ) -> Dict[str, Any]:
         url = f"{self.base_url}/requests/{request_id}/attach/"
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(url, json=payload.model_dump())
-            response.raise_for_status()
-            return response.json()
+        headers = get_api_headers()
+
+        async def _make_request():
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=payload.model_dump(), headers=headers)
+                response.raise_for_status()
+                return response.json()
+
+        return await retry_request(_make_request)
+
+    async def get_user_requests(self, tg_user_id: int) -> list[Dict[str, Any]]:
+        """Получить список заявок пользователя."""
+        url = f"{self.base_url}/requests/"
+        headers = get_api_headers()
+        
+        async def _make_request():
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                params = {"tg_user_id": tg_user_id}
+                response = await client.get(url, params=params, headers=headers)
+                response.raise_for_status()
+                return response.json()
+
+        return await retry_request(_make_request)
+
+    async def get_request(self, request_id: int) -> Dict[str, Any]:
+        """Получить детальную информацию о заявке."""
+        url = f"{self.base_url}/requests/{request_id}/"
+        headers = get_api_headers()
+
+        async def _make_request():
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                return response.json()
+
+        return await retry_request(_make_request)
 

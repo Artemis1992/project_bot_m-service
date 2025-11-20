@@ -7,6 +7,9 @@ from typing import Any, Dict, Optional
 import httpx
 from pydantic import BaseModel
 
+from .http_utils import get_api_headers
+from .retry_client import retry_request
+
 
 class FileUploadResponse(BaseModel):
     file_url: str
@@ -45,9 +48,14 @@ class FilesServiceClient:
             "author_id": author_id,
         }
         url = f"{self.base_url}/files/from-telegram"
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            return FileUploadResponse.model_validate(response.json())
+        headers = get_api_headers()
+
+        async def _make_request():
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                return FileUploadResponse.model_validate(response.json())
+
+        return await retry_request(_make_request, max_retries=2)  # Files can be large, fewer retries
 
 

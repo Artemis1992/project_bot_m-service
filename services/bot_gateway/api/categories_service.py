@@ -7,6 +7,9 @@ from typing import Iterable, List
 import httpx
 from pydantic import BaseModel, Field
 
+from .http_utils import get_api_headers
+from .retry_client import retry_request
+
 
 class Subcategory(BaseModel):
     id: str
@@ -60,10 +63,15 @@ class CategoriesServiceClient:
         Возвращает свежую структуру для FSM.
         """
         url = f"{self.base_url}/categories/tree"
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            payload = response.json()
+        headers = get_api_headers()
+
+        async def _make_request():
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                return response.json()
+
+        payload = await retry_request(_make_request)
         return [Warehouse.model_validate(raw) for raw in payload]
 
     async def list_warehouses(self) -> List[Warehouse]:

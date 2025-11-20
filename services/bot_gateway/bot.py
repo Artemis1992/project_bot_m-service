@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 from .api.categories_service import CategoriesServiceClient
 from .api.files_service import FilesServiceClient
 from .api.requests_service import RequestsServiceClient
+from .api.reporting_service import ReportingServiceClient
+from .api.approvals_service import ApprovalsServiceClient
 from .fsm.handlers import (
     BotDependencies,
     router as request_form_router,
@@ -24,9 +26,11 @@ async def main() -> None:
     if not bot_token:
         raise RuntimeError("BOT_TOKEN is not set")
 
-    categories_url = os.getenv("CATEGORIES_SERVICE_URL", "http://categories-service/api")
-    requests_url = os.getenv("REQUESTS_SERVICE_URL", "http://requests-service/api")
-    files_url = os.getenv("FILES_SERVICE_URL", "http://files-service/api")
+    categories_url = os.getenv("CATEGORIES_SERVICE_URL", "http://categories_service:8001/api")
+    requests_url = os.getenv("REQUESTS_SERVICE_URL", "http://requests_service:8000/api")
+    files_url = os.getenv("FILES_SERVICE_URL", "http://files_service:8100")
+    reporting_url = os.getenv("REPORTING_SERVICE_URL", "http://reporting_service:8200")
+    approvals_url = os.getenv("APPROVALS_SERVICE_URL", "http://approvals_service:8002/api")
 
     bot = Bot(token=bot_token, default=DefaultBotProperties(parse_mode="HTML"))
     dp = Dispatcher()
@@ -35,6 +39,8 @@ async def main() -> None:
         categories_client=CategoriesServiceClient(categories_url),
         requests_client=RequestsServiceClient(requests_url),
         files_client=FilesServiceClient(files_url),
+        reporting_client=ReportingServiceClient(reporting_url),
+        approvals_client=ApprovalsServiceClient(approvals_url),
     )
     setup_request_form_handlers(request_form_router, deps)
     dp.include_router(request_form_router)

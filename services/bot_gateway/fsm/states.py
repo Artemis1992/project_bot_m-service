@@ -9,4 +9,5 @@ class RequestFormStates(StatesGroup):
     comment = State()
     file = State()
     confirmation = State()
+    rejection_comment = State()  # Состояние для ввода комментария при отклонении заявки
 
