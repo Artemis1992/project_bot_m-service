@@ -29,20 +29,15 @@ class CategorySyncView(APIView):
     """
 
     def post(self, request, *args, **kwargs):
-        if not settings.GOOGLE_SHEET_ID:
+        # Use unified config
+        sync = CategoriesSheetSync()  # Uses config/google_sheets.py
+        if not sync.spreadsheet_key:
             return Response(
                 {
                     "detail": "GOOGLE_SHEET_ID is not configured; sync skipped.",
                 },
                 status=status.HTTP_202_ACCEPTED,
             )
-
-        sync = CategoriesSheetSync(
-            spreadsheet_key=settings.GOOGLE_SHEET_ID,
-            worksheet_name=settings.GOOGLE_CATEGORIES_SHEET,
-            service_account_file=settings.GOOGLE_SERVICE_ACCOUNT_FILE,
-            service_account_json=settings.GOOGLE_SERVICE_ACCOUNT_JSON,
-        )
         result = sync.sync()
         return Response(
             {"detail": "Синхронизация выполнена.", **result},

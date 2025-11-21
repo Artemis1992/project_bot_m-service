@@ -1,16 +1,37 @@
-FROM python:3.12-slim
+# Multi-stage build for approvals_service
+FROM python:3.12-slim as builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-COPY services/approvals_service/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
 
+# Copy and install Python dependencies
+COPY services/approvals_service/requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Final stage
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH=/root/.local/bin:$PATH
+
+WORKDIR /app
+
+# Copy Python dependencies from builder
+COPY --from=builder /root/.local /root/.local
+
+# Copy application code
 COPY services/approvals_service /app
 
 EXPOSE 8002
 
-CMD ["gunicorn", "approvals_service.wsgi:application", "--bind", "0.0.0.0:8002"]
+CMD ["gunicorn", "approvals_service.wsgi:application", "--bind", "0.0.0.0:8002", "--workers", "4"]
 

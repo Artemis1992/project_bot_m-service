@@ -6,3 +6,7 @@ class RequestsAppConfig(AppConfig):
     name = "requests_app"
     verbose_name = "Служебные записки"
 
+    def ready(self):
+        """Import signals when app is ready."""
+        import requests_app.signals  # noqa: F401
+

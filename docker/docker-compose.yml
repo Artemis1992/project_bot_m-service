@@ -1,19 +1,53 @@
 version: "3.9"
 
 services:
-  db:
+  db_requests:
     image: postgres:16
-    container_name: pbs-postgres
+    container_name: pbs-postgres-requests
     environment:
-      POSTGRES_DB: bot_service
+      POSTGRES_DB: requests_service
       POSTGRES_USER: bot_user
       POSTGRES_PASSWORD: bot_pass
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_requests_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bot_user -d bot_service"]
+      test: ["CMD-SHELL", "pg_isready -U bot_user -d requests_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db_approvals:
+    image: postgres:16
+    container_name: pbs-postgres-approvals
+    environment:
+      POSTGRES_DB: approvals_service
+      POSTGRES_USER: bot_user
+      POSTGRES_PASSWORD: bot_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_approvals_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bot_user -d approvals_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db_categories:
+    image: postgres:16
+    container_name: pbs-postgres-categories
+    environment:
+      POSTGRES_DB: categories_service
+      POSTGRES_USER: bot_user
+      POSTGRES_PASSWORD: bot_pass
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_categories_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bot_user -d categories_service"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,13 +60,14 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-super-secret}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://bot_user:bot_pass@db:5432/bot_service}
+      DATABASE_URL: ${DATABASE_URL_CATEGORIES:-postgresql+psycopg://bot_user:bot_pass@db_categories:5432/categories_service}
       GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID:-}
       GOOGLE_CATEGORIES_SHEET: ${GOOGLE_CATEGORIES_SHEET:-Categories}
       GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-}
       GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON:-}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-}
     depends_on:
-      db:
+      db_categories:
         condition: service_healthy
     ports:
       - "8001:8001"
@@ -46,9 +81,10 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-super-secret}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://bot_user:bot_pass@db:5432/bot_service}
+      DATABASE_URL: ${DATABASE_URL_REQUESTS:-postgresql+psycopg://bot_user:bot_pass@db_requests:5432/requests_service}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-}
     depends_on:
-      db:
+      db_requests:
         condition: service_healthy
     ports:
       - "8000:8000"
@@ -62,9 +98,10 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-super-secret}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://bot_user:bot_pass@db:5432/bot_service}
+      DATABASE_URL: ${DATABASE_URL_APPROVALS:-postgresql+psycopg://bot_user:bot_pass@db_approvals:5432/approvals_service}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-}
     depends_on:
-      db:
+      db_approvals:
         condition: service_healthy
     ports:
       - "8002:8002"
@@ -77,6 +114,7 @@ services:
     environment:
       BOT_TOKEN: ${BOT_TOKEN:-}
       GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON:-}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-}
     ports:
       - "8100:8100"
     restart: unless-stopped
@@ -90,6 +128,7 @@ services:
       GOOGLE_REPORTING_SHEET: ${GOOGLE_REPORTING_SHEET:-Reports}
       GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-}
       GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON:-}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-}
     ports:
       - "8200:8200"
     restart: unless-stopped
@@ -105,6 +144,7 @@ services:
       FILES_SERVICE_URL: ${FILES_SERVICE_URL:-http://files_service:8100}
       APPROVALS_SERVICE_URL: ${APPROVALS_SERVICE_URL:-http://approvals_service:8002/api}
       REPORTING_SERVICE_URL: ${REPORTING_SERVICE_URL:-http://reporting_service:8200}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-}
     depends_on:
       categories_service:
         condition: service_started
@@ -119,4 +159,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  postgres_requests_data:
+  postgres_approvals_data:
+  postgres_categories_data:

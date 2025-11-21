@@ -1,17 +1,16 @@
+"""Custom permissions for requests_service."""
+
+from __future__ import annotations
+
 from rest_framework import permissions
 
 
-class IsAuthorOrReadOnly(permissions.BasePermission):
-    """
-    Allows request authors to read/update their own requests while everyone else
-    only has read access. The actual authentication/authorization layer can be
-    plugged in later; for now we rely on the view to provide `request.user`.
-    """
+class AllowHealthCheck(permissions.BasePermission):
+    """Allow unauthenticated access to health check endpoints."""
 
-    def has_object_permission(self, request, view, obj) -> bool:  # pragma: no cover
-        if request.method in permissions.SAFE_METHODS:
+    def has_permission(self, request, view):
+        # Allow health checks without authentication
+        if request.path.endswith("/health/") or request.path.endswith("/health"):
             return True
-        author_id = getattr(obj, "tg_user_id", None)
-        requester_id = getattr(request.user, "telegram_id", None)
-        return author_id and requester_id and author_id == requester_id
-
+        # For other endpoints, require authentication
+        return request.user is not None or request.auth is not None

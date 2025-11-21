@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 import gspread
 from django.db import transaction
 from django.utils.text import slugify
+
+# Add config directory to path (папка config лежит в корне проекта)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent / "config"))
+
+from google_sheets import GOOGLE_SHEETS_CONFIG  # noqa: E402
 
 from .models import Warehouse, Category, Subcategory
 
@@ -35,16 +42,18 @@ class CategoriesSheetSync:
 
     def __init__(
         self,
-        spreadsheet_key: str,
-        worksheet_name: str,
+        spreadsheet_key: str | None = None,
+        worksheet_name: str | None = None,
         *,
         service_account_file: str | None = None,
         service_account_json: str | None = None,
     ) -> None:
-        self.spreadsheet_key = spreadsheet_key
-        self.worksheet_name = worksheet_name
-        self.service_account_file = service_account_file
-        self.service_account_json = service_account_json
+        # Use config if not provided
+        config = GOOGLE_SHEETS_CONFIG
+        self.spreadsheet_key = spreadsheet_key or config.spreadsheet_id
+        self.worksheet_name = worksheet_name or config.categories_tab
+        self.service_account_file = service_account_file or config.service_account_file
+        self.service_account_json = service_account_json or config.service_account_json
         self._client: gspread.Client | None = None
 
     def _build_client(self) -> gspread.Client:

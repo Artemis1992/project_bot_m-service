@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,6 +10,8 @@ from .serializers import (
     ApprovalChainSerializer,
     StartApprovalSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ApprovalChainViewSet(viewsets.GenericViewSet):
@@ -25,6 +29,21 @@ class ApprovalChainViewSet(viewsets.GenericViewSet):
         serializer = StartApprovalSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         chain = serializer.save()
+        
+        # Синхронизируем статус с requests_service
+        try:
+            chain._sync_request_status("in_progress", 1)
+        except Exception as exc:
+            logger.error(f"Failed to sync request {chain.request_id} status: {exc}")
+        
+        # Уведомляем первого согласующего
+        try:
+            first_step = chain.steps.filter(order=chain.current_step_order).first()
+            if first_step:
+                chain._notify_next_approver(first_step)
+        except Exception as exc:
+            logger.error(f"Failed to notify first approver for request {chain.request_id}: {exc}")
+        
         return Response(
             ApprovalChainSerializer(chain).data,
             status=status.HTTP_201_CREATED,

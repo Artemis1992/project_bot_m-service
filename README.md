@@ -1,61 +1,236 @@
-# PROJECT_BOT_SERVICE
+## О проекте
 
-Готовый набор микросервисов для Telegram-бота: сбор заявок, согласование, загрузка вложений в Drive, отчетность в Google Sheets и выдача дерева категорий.
+Это набор микросервисов для Telegram‑бота, который помогает оформлять служебки/заявки:
 
-## Что внутри
-- `bot_gateway` (Aiogram): диалоги бота, обращается к API других сервисов.
-- `requests_service` (Django + DRF): CRUD заявок + вложения.
-- `approvals_service` (Django + DRF): цепочки согласований.
-- `categories_service` (Django + DRF + gspread): дерево склад → категория → подкатегория, синхронизация с Google Sheets.
-- `files_service` (FastAPI): скачивание файлов из Telegram и загрузка в Google Drive (есть S3-модуль).
-- `reporting_service` (FastAPI + gspread): запись заявок в отчетный лист Google Sheets.
-- Инфраструктура: Postgres, docker-compose, общая конфигурация Google Sheets (`config/`).
+- пользователь в Telegram заполняет заявку по шагам с кнопками;
+- бот складывает данные в `requests_service`;
+- запускается цепочка согласований в `approvals_service`;
+- файлы улетают в хранилище через `files_service`;
+- отчёты пишутся в Google Sheets через `reporting_service`;
+- дерево категорий и складов берётся из Google Sheets через `categories_service`.
 
-Стек: Python 3.11+, Django 5.1, DRF, FastAPI, Aiogram 3, Postgres 16, gspread.
+Проект можно использовать как готовый шаблон, а можно доработать под свой бизнес‑процесс.
 
-## Быстрый старт (Docker)
-1. Скопируйте переменные: `cp .env.example .env` и заполните токены/ID таблицы. Обязательно задайте `BOT_TOKEN`, `GOOGLE_*` и секреты БД.
-2. Соберите и поднимите: `docker compose -f docker/docker-compose.yml up -d --build`.
-3. Примените миграции для Django-сервисов:
-   - `docker compose -f docker/docker-compose.yml exec requests_service python manage.py migrate`
-   - `docker compose -f docker/docker-compose.yml exec categories_service python manage.py migrate`
-   - `docker compose -f docker/docker-compose.yml exec approvals_service python manage.py migrate`
-4. Проверить готовность: `curl http://localhost:8000/api` (requests), `:8001/api` (categories), `:8002/api`, `:8100/health`, `:8200/health`.
+## Технологии
 
-## Основные переменные окружения
-- `BOT_TOKEN` — токен Telegram-бота.
-- `DATABASE_URL` — строка подключения Postgres (см. .env.example).
-- `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_DEBUG` — базовые настройки Django.
-- `GOOGLE_SHEET_ID`, `GOOGLE_CATEGORIES_SHEET=Categories`, `GOOGLE_REPORTING_SHEET=Reports`.
-- `GOOGLE_SERVICE_ACCOUNT_FILE` **или** `GOOGLE_SERVICE_ACCOUNT_JSON` — учетные данные для Sheets/Drive.
-- URL-ы сервисов (для локального запуска без Docker): `CATEGORIES_SERVICE_URL`, `REQUESTS_SERVICE_URL`, `APPROVALS_SERVICE_URL`, `FILES_SERVICE_URL`, `REPORTING_SERVICE_URL`.
+- **Язык**: Python 3.11+
+- **Telegram‑бот**: Aiogram 3 (`bot_gateway`)
+- **Web / API**:
+  - Django 5.1 + Django REST Framework (`requests_service`, `approvals_service`, `categories_service`)
+  - FastAPI (`files_service`, `reporting_service`)
+- **Хранилища и интеграции**:
+  - Postgres 16 (основная БД для Django‑сервисов)
+  - Google Sheets (категории, отчётность)
+  - Google Drive / S3 (хранение файлов)
+- **Инфраструктура**:
+  - Docker / docker‑compose
+  - `pytest` + отдельные `tests/requirements.txt` для тестов
 
-Полный список и дефолты — в `.env.example`.
+## Архитектура
 
-## Порты и точки входа
-- `requests_service` — `:8000` (`/api/requests/...`)
-- `categories_service` — `:8001` (`/api/categories/...`)
-- `approvals_service` — `:8002` (`/api/approvals/...`)
-- `files_service` — `:8100` (`/health`, `/files/from-telegram`)
-- `reporting_service` — `:8200` (`/health`, `/reports/requests`)
-- `bot_gateway` — телеграм-бот, запускается из `services/bot_gateway/bot.py`.
+Логика разбита на несколько сервисов, каждый отвечает за свой кусок:
 
-## Запуск без Docker (для отладки)
-- Активируйте venv, установите зависимости конкретного сервиса (`pip install -r services/<service>/requirements.txt`).
-- Пропишите переменные окружения из `.env.example`.
-- Django: `python manage.py migrate && python manage.py runserver 0.0.0.0:8000` (подставьте порт сервиса).
-- FastAPI: `uvicorn main:app --reload --host 0.0.0.0 --port 8100`.
+- **`bot_gateway`** — Telegram‑бот:
+  - FSM‑диалог с пользователем;
+  - главное меню (создать заявку, мои заявки, помощь);
+  - обращается к остальным сервисам только по HTTP.
 
-## Подготовка к продакшену
-- Выставить `DJANGO_DEBUG=false`, настоящие `DJANGO_SECRET_KEY` и закрытые `ALLOWED_HOSTS`.
-- Убедиться, что `DATABASE_URL` указывает на внешнюю БД; настроить бэкапы Postgres.
-- Настроить учетные данные Google (secrets/volumes) и реальные имена листов `Categories` и `Reports`.
-- Прописать `CSRF_TRUSTED_ORIGINS` для Django-сервисов, если будут веб-хуки/панели.
-- Включить централизованный сбор логов и мониторинг; добавить reverse-proxy (nginx/traefik) с TLS.
-- Прогнать миграции перед запуском каждой новой версии.
-- Настроить брандмауэр/ACL для сервисов файлов и отчетов, так как авторизации пока нет.
+- **`requests_service`** (Django + DRF):
+  - модель заявки и вложений;
+  - создание/чтение/частичное редактирование заявок;
+  - вызов `approvals_service` и `reporting_service` при создании;
+  - хранит статус заявки и текущий уровень согласования.
 
-## Дальнейшие шаги
-- Добавить авторизацию/аутентификацию для всех API.
-- Покрыть интеграции (Sheets/Drive/S3/Telegram) автотестами.
-- Связать approvals → reporting → requests событиями/вебхуками по нужному бизнес-потоку.
+- **`approvals_service`** (Django + DRF):
+  - цепочки согласований, шаги, статусы;
+  - двигает заявку по маршруту (Денис → Жасулан → Мейржан → Лязат/Айгуль);
+  - синхронизирует статус обратно в `requests_service`;
+  - через `bot_gateway` шлёт уведомления согласующим и автору.
+
+- **`categories_service`** (Django + DRF + gspread):
+  - дерево склад → категория → подкатегория;
+  - умеет синхронизировать дерево из Google Sheets;
+  - отдаёт структуру в бота для построения кнопок.
+
+- **`files_service`** (FastAPI):
+  - принимает file_id из Telegram;
+  - скачивает файл, сохраняет в Drive/S3;
+  - возвращает ссылку и путь для привязки к заявке.
+
+- **`reporting_service`** (FastAPI + gspread):
+  - пишет заявки в отчётный лист Google Sheets;
+  - используется `requests_service` через клиент.
+
+Общение между сервисами идёт по HTTP, защищено общим `SERVICE_API_KEY`.
+
+## Структура директорий
+
+Самое важное:
+
+- `services/`
+  - `bot_gateway/` — код Telegram‑бота:
+    - `bot.py` — точка входа;
+    - `api/` — HTTP‑клиенты к другим сервисам;
+    - `fsm/` — состояния, хендлеры, клавиатуры.
+  - `requests_service/` — Django‑сервис заявок.
+  - `approvals_service/` — Django‑сервис согласований.
+  - `categories_service/` — Django‑сервис категорий.
+  - `files_service/` — FastAPI‑сервис файлов.
+  - `reporting_service/` — FastAPI‑сервис отчётности.
+- `docker/`
+  - `docker-compose.yml` — общий запуск всего стека;
+  - `*-service.Dockerfile` — образы сервисов.
+- `config/`
+  - общая конфигурация Google Sheets.
+- `tests/`
+  - набор автотестов по всем сервисам + интеграционные тесты.
+- `env.example`
+  - пример файла окружения со всеми переменными.
+
+## Как запустить локально
+
+### Вариант 1 — через Docker (рекомендуется)
+
+1. **Скопируйте и заполните `.env`:**
+
+```bash
+cp env.example .env        # Linux / Mac
+Copy-Item env.example .env # Windows PowerShell
+```
+
+Минимально нужно задать:
+
+- `BOT_TOKEN` — токен Telegram‑бота от @BotFather;
+- `SERVICE_API_KEY` — любой строковый ключ, одинаковый для всех сервисов.
+
+Google‑переменные (`GOOGLE_SHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`) можно оставить пустыми, если отчёты и синхронизация с таблицами пока не нужны.
+
+2. **Поднимите весь стек:**
+
+```bash
+docker compose -f docker/docker-compose.yml up -d --build
+```
+
+3. **Примените миграции для Django‑сервисов:**
+
+```bash
+docker compose -f docker/docker-compose.yml exec requests_service python manage.py migrate
+docker compose -f docker/docker-compose.yml exec categories_service python manage.py migrate
+docker compose -f docker/docker-compose.yml exec approvals_service python manage.py migrate
+```
+
+4. **Проверьте, что сервисы поднялись:**
+
+```bash
+curl http://localhost:8000/api          # requests_service
+curl http://localhost:8001/api          # categories_service
+curl http://localhost:8002/api          # approvals_service
+curl http://localhost:8100/health       # files_service
+curl http://localhost:8200/health       # reporting_service
+```
+
+5. **Запустите бота (если он не стартует из Docker):**
+
+```bash
+cd services/bot_gateway
+python bot.py
+```
+
+После этого можно писать боту в Telegram и проходить сценарий создания заявки.
+
+### Вариант 2 — без Docker (для отладки)
+
+1. Создайте и активируйте виртуальное окружение.
+2. Установите зависимости нужного сервиса:
+
+```bash
+pip install -r services/requests_service/requirements.txt
+```
+
+3. Пропишите переменные окружения (можно взять из `env.example`).
+4. Для Django‑сервисов:
+
+```bash
+cd services/requests_service
+python manage.py migrate
+python manage.py runserver 0.0.0.0:8000
+```
+
+5. Для FastAPI‑сервисов:
+
+```bash
+cd services/files_service
+uvicorn main:app --reload --host 0.0.0.0 --port 8100
+```
+
+Бот в этом случае всё равно общается с сервисами по HTTP, только по `localhost`.
+
+## Как запускать тесты
+
+1. **Установить зависимости для тестов:**
+
+```bash
+pip install -r tests/requirements.txt
+```
+
+2. **Минимальные переменные окружения** (можно тестовые):
+
+```bash
+export SERVICE_API_KEY="test-api-key-12345"
+export BOT_TOKEN="test-bot-token-12345"
+export GOOGLE_SHEET_ID="test-sheet-id-12345"
+export GOOGLE_SERVICE_ACCOUNT_JSON="{}"
+export DJANGO_SECRET_KEY="test-secret-key"
+```
+
+3. **Запуск всех тестов из корня:**
+
+```bash
+pytest tests -v
+```
+
+4. **Запуск тестов конкретного сервиса**, пример для `requests_service`:
+
+```bash
+cd services/requests_service
+DJANGO_SETTINGS_MODULE=service_requests.settings pytest ../../tests/requests_service -v
+```
+
+В `tests/README.md` описаны все группы тестов и дополнительные сценарии (интеграционные, с реальными Google‑сервисами и т.п.).
+
+## План перехода в микросервисы
+
+Фактически проект уже разбит на микросервисы, но есть, что улучшать, чтобы чувствовать себя как в "настоящей" продакшен‑микросервисной архитектуре.
+
+- **1. Жёстко оторваться от общего кода**
+  - Сейчас сервисы всё ещё живут в одном репозитории.
+  - Возможный следующий шаг — вынести их в отдельные репозитории или хотя бы в отдельные Docker‑образы с независимыми релизами.
+
+- **2. Выделить общие вещи в библиотеки**
+  - Клиенты (`SERVICE_API_KEY`‑аутентификация, retry‑логика);
+  - схемы запросов/ответов (pydantic‑модели) для унификации контрактов;
+  - общее логирование и трейсинг.
+
+- **3. Добавить шину событий**
+  - Сейчас связь в основном синхронная по HTTP.
+  - Можно добавить брокер (RabbitMQ / Kafka / Redis Streams) и перевести часть сценариев в асинхронные события:
+    - "заявка создана",
+    - "заявка утверждена/отклонена",
+    - "файл загружен",
+    - "строка записана в отчёт".
+
+- **4. Усилить наблюдаемость**
+  - Централизованные логи (ELK/Graylog);
+  - метрики и алерты (Prometheus + Grafana);
+  - request‑ID/trace‑ID между сервисами.
+
+- **5. Отдельный сервис уведомлений**
+  - Сейчас уведомления проходят через `bot_gateway` + `NotificationService`.
+  - Можно выделить `notifications_service`, который будет отвечать за Telegram, e‑mail, чаты и т.п.
+
+- **6. Продакшен‑обвязка**
+  - Ingress / reverse‑proxy (nginx/traefik) перед сервисами;
+  - отдельные базы/кластеры для разных сервисов;
+  - CI/CD пайплайны на каждый сервис.
+
+Проект уже можно запускать как микросервисный, но все пункты выше — это дорожная карта, как постепенно довести его до "боевого" уровня.

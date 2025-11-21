@@ -8,10 +8,12 @@ import uuid
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from middleware import verify_api_key
 from modules.google_drive import GoogleDriveStorage
 from modules.telegram_downloader import TelegramDownloader
 
 app = FastAPI(title="files_service", version="0.1.0")
+app.middleware("http")(verify_api_key)
 
 DOWNLOADER = TelegramDownloader(
     bot_token=os.getenv("BOT_TOKEN", "placeholder-token"),
@@ -92,7 +94,7 @@ async def upload_from_telegram(payload: TelegramFileRequest) -> FileUploadRespon
 def build_storage_path(category: str, subcategory: str, filename: str) -> str:
     normalized_category = category.replace(" ", "_")
     normalized_subcategory = subcategory.replace(" ", "_")
-    now = dt.datetime.utcnow()
+    now = dt.datetime.now(dt.timezone.utc)
     unique_suffix = uuid.uuid4().hex[:8]
     return (
         f"/{normalized_category}/{normalized_subcategory}/"
